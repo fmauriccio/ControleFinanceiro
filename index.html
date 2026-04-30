@@ -1363,54 +1363,225 @@
   </div>
 </div>
 
-<script>
-// ==================== STATE ====================
-let state = {
-  membros: [],
-  despesas: [],
-  cartoes: [],
-  compras: [],
-  metas: [],
-  currentMonth: new Date().toISOString().slice(0, 7) // "2025-05"
-};
+<script type="module">
+  import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
-// Load from localStorage
-function loadState() {
-  const saved = localStorage.getItem('familyfinance_v2');
-  if (saved) {
-    try { state = { ...state, ...JSON.parse(saved) }; } catch(e) {}
+  // Conexão com Supabase
+  const SUPABASE_URL = "https://hlbwvxsqihepqjcsomtv.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_GH1BVJY0I_CqlybFY2gs5A_HHQFf8Xf";
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // ==================== STATE ====================
+  let state = {
+    membros: [],
+    despesas: [],
+    cartoes: [],
+    compras: [],
+    metas: [],
+    currentMonth: new Date().toISOString().slice(0, 7)
+  };
+
+  // ==================== LOAD STATE ====================
+  async function loadState() {
+    try {
+      const [membros, despesas, cartoes, compras, metas] = await Promise.all([
+        supabase.from("membros").select("*"),
+        supabase.from("despesas").select("*"),
+        supabase.from("cartoes").select("*"),
+        supabase.from("compras").select("*"),
+        supabase.from("metas").select("*")
+      ]);
+
+      state.membros = membros.data || [];
+      state.despesas = despesas.data || [];
+      state.cartoes = cartoes.data || [];
+      state.compras = compras.data || [];
+      state.metas = metas.data || [];
+
+      console.log("Dados carregados do Supabase:", state);
+    } catch (err) {
+      console.error("Erro ao carregar dados:", err);
+    }
   }
-}
 
-function saveState() {
-  localStorage.setItem('familyfinance_v2', JSON.stringify(state));
-}
+  // ==================== FUNÇÕES DE SALVAR / ATUALIZAR / DELETAR ====================
+  async function saveDespesa() {
+    const desc = document.getElementById("despesaDesc").value.trim();
+    const valor = parseFloat(document.getElementById("despesaValor").value);
+    if (!desc || isNaN(valor) || valor <= 0) { alert("Preencha todos os campos!"); return; }
 
-loadState();
+    const editId = document.getElementById("despesaEditId").value;
+    const obj = {
+      desc, valor,
+      categoria: document.getElementById("despesaCategoria").value,
+      tipo: document.getElementById("despesaTipo").value,
+      pessoa: document.getElementById("despesaPessoa").value,
+      grupo: document.getElementById("despesaGrupo").value,
+      mes: state.currentMonth
+    };
 
-// ==================== NAVIGATION ====================
-let currentPage = 'dashboard';
+    try {
+      if (editId) {
+        await supabase.from("despesas").update(obj).eq("id", editId);
+      } else {
+        await supabase.from("despesas").insert(obj);
+      }
+      await loadState();
+      closeModal("modalDespesa");
+      renderAll();
+    } catch (err) {
+      console.error("Erro ao salvar despesa:", err);
+    }
+  }
 
-function showPage(page) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById('page-' + page).classList.add('active');
-  document.querySelectorAll('.nav-item').forEach(n => {
-    if (n.getAttribute('onclick')?.includes("'" + page + "'")) n.classList.add('active');
-  });
-  const titles = { dashboard: 'Dashboard', despesas: 'Despesas', cartoes: 'Cartões de Crédito',
-    renda: 'Renda Familiar', regra5030: 'Regra 50/30/20', metas: 'Metas Financeiras', relatorios: 'Relatórios' };
-  document.getElementById('pageTitle').textContent = titles[page] || page;
-  currentPage = page;
-  closeSidebar();
-  renderAll();
-}
+  async function deleteDespesa(id) {
+    if (!confirm("Excluir esta despesa?")) return;
+    try {
+      await supabase.from("despesas").delete().eq("id", id);
+      await loadState();
+      renderAll();
+    } catch (err) {
+      console.error("Erro ao excluir despesa:", err);
+    }
+  }
 
-function openModalByPage() {
-  const map = { dashboard: 'modalDespesa', despesas: 'modalDespesa', cartoes: 'modalCartao',
-    renda: 'modalMembro', metas: 'modalMeta', regra5030: 'modalDespesa', relatorios: null };
-  const m = map[currentPage];
-  if (m) openModal(m);
+  async function saveCartao() {
+    const nome = document.getElementById("cartaoNome").value.trim();
+    const limite = parseFloat(document.getElementById("cartaoLimite").value);
+    if (!nome || isNaN(limite)) { alert("Preencha os campos!"); return; }
+
+    const obj = {
+      nome, limite,
+      cor: document.getElementById("cartaoCor").value,
+      melhorDia: parseInt(document.getElementById("cartaoMelhorDia").value) || 1,
+      vencimento: parseInt(document.getElementById("cartaoVencimento").value) || 10
+    };
+
+    try {
+      await supabase.from("cartoes").insert(obj);
+      await loadState();
+      closeModal("modalCartao");
+      renderAll();
+    } catch (err) {
+      console.error("Erro ao salvar cartão:", err);
+    }
+  }
+
+  async function deleteCartao(id) {
+    if (!confirm("Excluir este cartão e todas suas compras?")) return;
+    try {
+      await supabase.from("cartoes").delete().eq("id", id);
+      await supabase.from("compras").delete().eq("cartaoId", id);
+      await loadState();
+      renderAll();
+    } catch (err) {
+      console.error("Erro ao excluir cartão:", err);
+    }
+  }
+
+  async function saveCompra() {
+    const desc = document.getElementById("compraDesc").value.trim();
+    const valor = parseFloat(document.getElementById("compraValor").value);
+    const cartaoId = document.getElementById("compraCartao").value;
+    const mes = document.getElementById("compraMes").value;
+    if (!desc || isNaN(valor) || !cartaoId || !mes) { alert("Preencha todos os campos!"); return; }
+    const parcelas = tipoCompra === "parcelado" ? parseInt(document.getElementById("compraParcelas").value) || 1 : 1;
+    const obj = {
+      desc, valor, cartaoId,
+      categoria: document.getElementById("compraCategoria").value,
+      tipo: tipoCompra,
+      parcelas, mesInicio: mes,
+      valorParcela: valor / parcelas
+    };
+
+    try {
+      await supabase.from("compras").insert(obj);
+      await loadState();
+      closeModal("modalCompra");
+      renderAll();
+    } catch (err) {
+      console.error("Erro ao salvar compra:", err);
+    }
+  }
+
+  async function deleteCompra(id) {
+    if (!confirm("Excluir esta compra?")) return;
+    try {
+      await supabase.from("compras").delete().eq("id", id);
+      await loadState();
+      renderAll();
+    } catch (err) {
+      console.error("Erro ao excluir compra:", err);
+    }
+  }
+
+  async function saveMembro() {
+    const nome = document.getElementById("membroNome").value.trim();
+    const salario = parseFloat(document.getElementById("membroSalario").value) || 0;
+    if (!nome) { alert("Informe o nome!"); return; }
+    const obj = {
+      nome,
+      emoji: document.getElementById("membroEmoji").value,
+      salario,
+      extras: parseFloat(document.getElementById("membroExtras").value) || 0
+    };
+
+    try {
+      await supabase.from("membros").insert(obj);
+      await loadState();
+      closeModal("modalMembro");
+      renderAll();
+    } catch (err) {
+      console.error("Erro ao salvar membro:", err);
+    }
+  }
+
+  async function deleteMembro(id) {
+    if (!confirm("Remover este membro?")) return;
+    try {
+      await supabase.from("membros").delete().eq("id", id);
+      await loadState();
+      renderAll();
+    } catch (err) {
+      console.error("Erro ao excluir membro:", err);
+    }
+  }
+
+  async function saveMeta() {
+    const nome = document.getElementById("metaNome").value.trim();
+    const valor = parseFloat(document.getElementById("metaValor").value);
+    if (!nome || isNaN(valor)) { alert("Preencha os campos!"); return; }
+    const obj = {
+      nome, valor,
+      emoji: document.getElementById("metaEmoji").value || "🎯",
+      atual: parseFloat(document.getElementById("metaAtual").value) || 0,
+      data: document.getElementById("metaData").value
+    };
+
+    try {
+      await supabase.from("metas").insert(obj);
+      await loadState();
+      closeModal("modalMeta");
+      renderAll();
+    } catch (err) {
+      console.error("Erro ao salvar meta:", err);
+    }
+  }
+
+  async function deleteMeta(id) {
+    if (!confirm("Excluir esta meta?")) return;
+    try {
+      await supabase.from("metas").delete().eq("id", id);
+      await loadState();
+      renderAll();
+    } catch (err) {
+      console.error("Erro ao excluir meta:", err);
+    }
+  }
+
+  async function addToMeta(id, val) {
+    const m = state.metas.find(x => x.id === id);
+    if (m)
 }
 
 // ==================== MODALS ====================
@@ -1450,7 +1621,7 @@ function openModalMeta() { openModal('modalMeta'); }
 // ==================== SAVE FUNCTIONS ====================
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
-function saveDespesa() {
+async function saveDespesa() {
   const desc = document.getElementById('despesaDesc').value.trim();
   const valor = parseFloat(document.getElementById('despesaValor').value);
   if (!desc || isNaN(valor) || valor <= 0) { alert('Preencha todos os campos!'); return; }
@@ -1470,13 +1641,19 @@ function saveDespesa() {
   } else {
     state.despesas.push(obj);
   }
-  saveState(); closeModal('modalDespesa'); renderAll();
+  await saveExpense(novaDespesa);
+
+await loadState();
+
+closeModal('modalDespesa');
+
+renderAll();
 }
 
 function deleteDespesa(id) {
   if (!confirm('Excluir esta despesa?')) return;
   state.despesas = state.despesas.filter(x => x.id !== id);
-  saveState(); renderAll();
+  function saveStatetate(); renderAll();
 }
 
 function saveCartao() {
