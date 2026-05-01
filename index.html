@@ -998,7 +998,16 @@ function populateYearSelect(id, selected) {
 function getRendaTotal() { return state.membros.reduce((s,m) => s+(m.salario||0)+(m.extras||0), 0); }
 
 function getDespesasMes(mes) {
-  return state.despesas.filter(d => d.mes === (mes||state.currentMonth));
+  const mesAlvo = mes || state.currentMonth;
+  return state.despesas.filter(d => {
+    if (d.tipo === 'recorrente') {
+      // Recorrente: aparece do mês de criação em diante
+      return d.mes <= mesAlvo;
+    } else {
+      // Eventual: aparece SOMENTE no mês exato em que foi criada
+      return d.mes === mesAlvo;
+    }
+  });
 }
 
 function getComprasParaMes(mes) {
@@ -1322,7 +1331,11 @@ function renderDespesas() {
   if (sel) { const cur=sel.value; sel.innerHTML='<option value="">Todas as Pessoas</option>'; state.membros.forEach(m=>sel.innerHTML+=`<option value="${m.nome}">${m.nome}</option>`); sel.value=cur; }
   populateYearSelect('filterAno', filterAno);
 
-  let desp = filterAno ? state.despesas.filter(d=>d.mes&&d.mes.startsWith(filterAno+'-')) : getDespesasMes();
+  let desp = state.despesas.filter(d => {
+  if (filterAno && !d.mes?.startsWith(filterAno + '-')) return false;
+  if (d.tipo === 'recorrente') return d.mes <= state.currentMonth && d.mes?.startsWith(filterAno || d.mes.slice(0,4));
+  return d.mes === state.currentMonth;
+});
   if (filterCat)    desp = desp.filter(d=>d.categoria===filterCat);
   if (filterTipo)   desp = desp.filter(d=>d.tipo===filterTipo);
   if (filterPessoa) desp = desp.filter(d=>d.pessoa===filterPessoa);
