@@ -254,9 +254,85 @@
 
   /* Cartão mensal */
   .card-monthly-hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:12px; }
+
+  /* ===== AUTH SCREENS ===== */
+  #authScreen {
+    position:fixed; inset:0; background:var(--bg-primary); z-index:99999;
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  #authScreen.hidden { display:none; }
+  .auth-box {
+    background:var(--bg-secondary); border:1px solid var(--border);
+    border-radius:var(--radius); padding:40px 36px; width:100%; max-width:420px;
+    box-shadow:0 24px 80px rgba(0,0,0,.6); animation:slideUp .35s ease;
+  }
+  .auth-logo { font-family:'Syne',sans-serif; font-size:24px; font-weight:800; text-align:center; margin-bottom:6px; }
+  .auth-logo span { color:var(--accent-green); }
+  .auth-sub { font-size:12px; color:var(--text-muted); text-align:center; letter-spacing:1px; text-transform:uppercase; margin-bottom:32px; }
+  .auth-tabs { display:flex; background:var(--bg-primary); border:1px solid var(--border); border-radius:var(--radius-sm); padding:3px; margin-bottom:28px; }
+  .auth-tab { flex:1; padding:9px; font-size:13px; font-weight:600; border:none; border-radius:7px; cursor:pointer; background:none; color:var(--text-muted); transition:all .2s; font-family:'Plus Jakarta Sans',sans-serif; }
+  .auth-tab.active { background:var(--bg-card); color:var(--text-primary); }
+  .auth-panel { display:none; }
+  .auth-panel.active { display:block; }
+  .auth-error { background:rgba(255,77,109,.1); border:1px solid rgba(255,77,109,.3); color:var(--accent-red); border-radius:var(--radius-sm); padding:10px 14px; font-size:13px; margin-bottom:16px; display:none; }
+  .auth-error.show { display:block; }
+  .auth-success { background:rgba(0,229,160,.1); border:1px solid rgba(0,229,160,.3); color:var(--accent-green); border-radius:var(--radius-sm); padding:10px 14px; font-size:13px; margin-bottom:16px; display:none; }
+  .auth-success.show { display:block; }
+  .auth-hint { font-size:11px; color:var(--text-muted); margin-top:4px; }
+  /* User chip in topbar */
+  .user-chip { display:flex; align-items:center; gap:8px; background:var(--bg-card); border:1px solid var(--border); border-radius:20px; padding:5px 12px 5px 8px; font-size:13px; font-weight:600; color:var(--text-secondary); }
+  .user-avatar { width:26px; height:26px; border-radius:50%; background:rgba(0,229,160,.2); color:var(--accent-green); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; }
 </style>
 </head>
 <body>
+
+<!-- ===== AUTH SCREEN ===== -->
+<div id="authScreen">
+  <div class="auth-box">
+    <div class="auth-logo">Family<span>Finance</span></div>
+    <div class="auth-sub">Controle Familiar</div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tabLogin"    onclick="switchAuthTab('login')">Entrar</button>
+      <button class="auth-tab"        id="tabCadastro" onclick="switchAuthTab('cadastro')">Cadastrar</button>
+    </div>
+
+    <!-- LOGIN -->
+    <div class="auth-panel active" id="panelLogin">
+      <div class="auth-error"   id="loginError"></div>
+      <div class="form-group">
+        <label class="form-label">Usuário</label>
+        <input type="text" class="form-input" id="loginUser" placeholder="Seu usuário" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Senha</label>
+        <input type="password" class="form-input" id="loginPass" placeholder="4 a 8 dígitos" maxlength="8" inputmode="numeric" autocomplete="current-password">
+        <div class="auth-hint">Apenas números, de 4 a 8 dígitos</div>
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="doLogin()">Entrar</button>
+    </div>
+
+    <!-- CADASTRO -->
+    <div class="auth-panel" id="panelCadastro">
+      <div class="auth-error"   id="cadastroError"></div>
+      <div class="auth-success" id="cadastroOk">Usuário cadastrado! Faça o login.</div>
+      <div class="form-group">
+        <label class="form-label">Usuário</label>
+        <input type="text" class="form-input" id="cadastroUser" placeholder="Escolha um nome de usuário" autocomplete="username">
+        <div class="auth-hint">Qualquer caractere é aceito</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Senha</label>
+        <input type="password" class="form-input" id="cadastroPass" placeholder="4 a 8 dígitos numéricos" maxlength="8" inputmode="numeric" autocomplete="new-password">
+        <div class="auth-hint">Apenas números, de 4 a 8 dígitos</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirmar Senha</label>
+        <input type="password" class="form-input" id="cadastroPass2" placeholder="Repita a senha" maxlength="8" inputmode="numeric" autocomplete="new-password">
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="doCadastro()">Cadastrar</button>
+    </div>
+  </div>
+</div>
 
 <!-- Loading Overlay -->
 <div id="loadingOverlay">
@@ -302,8 +378,10 @@
       <h1 class="page-title" id="pageTitle">Dashboard</h1>
     </div>
     <div class="topbar-actions">
+      <div class="user-chip" id="userChip"><div class="user-avatar" id="userAvatar">?</div><span id="userNameLabel">—</span></div>
       <button class="btn btn-secondary btn-sm" onclick="openModalDespesa()">+ Despesa</button>
       <button class="btn btn-primary btn-sm"   onclick="openModalByPage()">+ Adicionar</button>
+      <button class="btn btn-danger btn-sm"    onclick="doLogout()" title="Sair">⎋ Sair</button>
     </div>
   </header>
 
@@ -1783,13 +1861,123 @@ function closeSidebar()  { document.getElementById('sidebar').classList.remove('
 function set(id, html) { const el=document.getElementById(id); if(el) el.innerHTML=html; }
 
 // ==========================================================
-//  INIT
+//  AUTH — usuários armazenados no Supabase (tabela: usuarios)
 // ==========================================================
-document.getElementById('monthLabel').textContent = getMonthLabel(state.currentMonth);
-cartaoMesView = state.currentMonth;
-document.getElementById('fluxoAnoLabel').textContent = String(fluxoAno);
+let currentUser = null;
 
-loadState().then(() => renderAll());
+// Utilitário: hash simples (djb2) — não é criptografia forte,
+// mas evita senhas em texto puro no banco.
+function hashSenha(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i);
+  return (h >>> 0).toString(16);
+}
+
+function switchAuthTab(tab) {
+  document.getElementById('tabLogin').classList.toggle('active', tab==='login');
+  document.getElementById('tabCadastro').classList.toggle('active', tab==='cadastro');
+  document.getElementById('panelLogin').classList.toggle('active', tab==='login');
+  document.getElementById('panelCadastro').classList.toggle('active', tab==='cadastro');
+  ['loginError','cadastroError','cadastroOk'].forEach(id => {
+    const el=document.getElementById(id); if(el){ el.classList.remove('show'); el.textContent=''; }
+  });
+}
+
+function showAuthError(id, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('show');
+}
+
+function hideAuthMsg(id) {
+  const el = document.getElementById(id);
+  if (el) { el.classList.remove('show'); el.textContent = ''; }
+}
+
+async function doLogin() {
+  hideAuthMsg('loginError');
+  const usuario = document.getElementById('loginUser').value.trim();
+  const senha   = document.getElementById('loginPass').value;
+
+  if (!usuario) return showAuthError('loginError', 'Informe o usuário.');
+  if (!/^\d{4,8}$/.test(senha)) return showAuthError('loginError', 'Senha deve ter de 4 a 8 dígitos numéricos.');
+
+  const hash = hashSenha(senha);
+  const { data, error } = await sb.from('usuarios').select('id, usuario').eq('usuario', usuario).eq('senha_hash', hash).maybeSingle();
+
+  if (error || !data) return showAuthError('loginError', 'Usuário ou senha incorretos.');
+
+  currentUser = { id: data.id, nome: data.usuario };
+  localStorage.setItem('ff_user', JSON.stringify(currentUser));
+  enterApp();
+}
+
+async function doCadastro() {
+  hideAuthMsg('cadastroError');
+  hideAuthMsg('cadastroOk');
+  const usuario = document.getElementById('cadastroUser').value.trim();
+  const senha   = document.getElementById('cadastroPass').value;
+  const senha2  = document.getElementById('cadastroPass2').value;
+
+  if (!usuario) return showAuthError('cadastroError', 'Informe um nome de usuário.');
+  if (!/^\d{4,8}$/.test(senha)) return showAuthError('cadastroError', 'Senha deve ter de 4 a 8 dígitos numéricos.');
+  if (senha !== senha2) return showAuthError('cadastroError', 'As senhas não conferem.');
+
+  // Verifica se usuário já existe
+  const { data: existe } = await sb.from('usuarios').select('id').eq('usuario', usuario).maybeSingle();
+  if (existe) return showAuthError('cadastroError', 'Esse usuário já está cadastrado.');
+
+  const hash = hashSenha(senha);
+  const { error } = await sb.from('usuarios').insert({ usuario, senha_hash: hash });
+  if (error) return showAuthError('cadastroError', 'Erro ao cadastrar. Tente novamente.');
+
+  document.getElementById('cadastroUser').value = '';
+  document.getElementById('cadastroPass').value = '';
+  document.getElementById('cadastroPass2').value = '';
+  const ok = document.getElementById('cadastroOk');
+  ok.textContent = 'Usuário cadastrado com sucesso! Faça o login.';
+  ok.classList.add('show');
+  setTimeout(() => switchAuthTab('login'), 1800);
+}
+
+function doLogout() {
+  currentUser = null;
+  localStorage.removeItem('ff_user');
+  document.getElementById('authScreen').classList.remove('hidden');
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+  switchAuthTab('login');
+}
+
+function enterApp() {
+  document.getElementById('authScreen').classList.add('hidden');
+  // Atualiza chip do usuário na topbar
+  if (currentUser) {
+    document.getElementById('userNameLabel').textContent = currentUser.nome;
+    document.getElementById('userAvatar').textContent = currentUser.nome.charAt(0).toUpperCase();
+  }
+  // Inicializa o app normalmente
+  document.getElementById('monthLabel').textContent = getMonthLabel(state.currentMonth);
+  cartaoMesView = state.currentMonth;
+  document.getElementById('fluxoAnoLabel').textContent = String(fluxoAno);
+  loadState().then(() => renderAll());
+}
+
+// ==========================================================
+//  INIT — verifica sessão salva
+// ==========================================================
+(function() {
+  const saved = localStorage.getItem('ff_user');
+  if (saved) {
+    try {
+      currentUser = JSON.parse(saved);
+      enterApp();
+      return;
+    } catch(e) { localStorage.removeItem('ff_user'); }
+  }
+  // Nenhuma sessão — mantém tela de auth visível
+})();
 </script>
 </body>
 </html>
