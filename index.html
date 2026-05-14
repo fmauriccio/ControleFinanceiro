@@ -407,8 +407,11 @@
           <div class="month-summary-value" id="summaryCartoes" style="color:var(--accent-blue)">R$ 0,00</div>
         </div>
         <div class="month-summary-item">
-          <div class="month-summary-label">Previsão Fechamento</div>
-          <div class="month-summary-value" id="summaryPrevisao" style="color:var(--accent-yellow)">R$ 0,00</div>
+          <div class="month-summary-label">Renda Comprometida</div>
+          <div class="month-summary-value" id="summaryPrevisao" style="color:var(--accent-yellow)">0%</div>
+          <div style="margin-top:6px; background:rgba(255,255,255,.08); border-radius:99px; height:5px; overflow:hidden;">
+            <div id="summaryPrevisaoBar" style="height:100%; border-radius:99px; width:0%; transition:width .5s ease; background:var(--accent-green);"></div>
+          </div>
         </div>
       </div>
       <div id="alertsContainer"></div>
@@ -1524,18 +1527,19 @@ function renderDashboard() {
   const saldo      = renda - totalGastos;
   const now        = new Date();
   const daysInMes  = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
-  // Previsão de fechamento:
-  // Renda - tudo que já está comprometido no mês (despesas fixas + cartão)
-  // É o número real — não tenta projetar gastos variáveis futuros
-  const previsao = renda - totalGastos;
+  // % da renda comprometida
+  const pctComp = renda > 0 ? Math.min(100, Math.round(totalGastos / renda * 100)) : 0;
+  const compColor = pctComp > 90 ? 'var(--accent-red)' : pctComp > 70 ? 'var(--accent-yellow)' : 'var(--accent-green)';
+  set('summaryPrevisao', pctComp + '%');
   const previsaoEl = document.getElementById('summaryPrevisao');
-  if (previsaoEl) previsaoEl.style.color = previsao >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+  if (previsaoEl) previsaoEl.style.color = compColor;
+  const barEl = document.getElementById('summaryPrevisaoBar');
+  if (barEl) { barEl.style.width = pctComp + '%'; barEl.style.background = compColor; }
 
   set('summaryRenda',    formatBRL(renda));
   set('summaryGastos',   formatBRL(totalGastos));
   set('summarySaldo',    formatBRL(saldo));
   set('summaryCartoes',  formatBRL(cartTotal));
-  set('summaryPrevisao', formatBRL(previsao));
   const saldoEl = document.getElementById('summarySaldo');
   if (saldoEl) saldoEl.style.color = saldo>=0?'var(--accent-green)':'var(--accent-red)';
 
