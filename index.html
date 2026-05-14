@@ -473,8 +473,9 @@
         </select>
         <select class="form-select" style="width:160px;" id="filterTipo" onchange="renderDespesas()">
           <option value="">Todos os Tipos</option>
-          <option value="recorrente">Recorrentes</option>
-          <option value="eventual">Eventuais</option>
+          <option value="recorrente">🔄 Recorrentes</option>
+          <option value="temporaria">⏳ Temporárias</option>
+          <option value="eventual">📌 Eventuais</option>
         </select>
         <select class="form-select" style="width:160px;" id="filterPessoa" onchange="renderDespesas()">
           <option value="">Todas as Pessoas</option>
@@ -732,15 +733,24 @@
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Tipo</label>
-        <select class="form-select" id="despesaTipo">
-          <option value="recorrente">Recorrente (mensal)</option>
-          <option value="eventual">Eventual</option>
+        <select class="form-select" id="despesaTipo" onchange="toggleDespesaMeses()">
+          <option value="recorrente">🔄 Recorrente (mensal fixo)</option>
+          <option value="temporaria">⏳ Temporária (mensal por X meses)</option>
+          <option value="eventual">📌 Eventual (única vez)</option>
         </select>
       </div>
       <div class="form-group">
         <label class="form-label">Responsável</label>
         <select class="form-select" id="despesaPessoa"><option value="Família">Família</option></select>
       </div>
+    </div>
+    <div id="despesaMesesGroup" style="display:none;" class="form-group">
+      <label class="form-label" style="display:flex;align-items:center;gap:6px;">
+        Duração
+        <span style="font-size:10px;color:var(--text-muted);font-weight:400;">(quantos meses restam, incluindo o atual)</span>
+      </label>
+      <input type="number" class="form-input" id="despesaMeses" placeholder="Ex: 6" min="1" max="120" oninput="atualizarPreviewMeses()">
+      <div id="despesaMesesPreview" style="display:none; margin-top:8px; font-size:12px; color:var(--text-muted); background:rgba(168,85,247,.08); border:1px solid rgba(168,85,247,.2); border-radius:8px; padding:10px 12px; line-height:1.6;"></div>
     </div>
     <div class="form-group">
       <label class="form-label">Grupo 50/30/20</label>
@@ -984,7 +994,7 @@ let state = {
 //  Supabase usa snake_case; JS usa camelCase
 // ==========================================================
 const fromDB = {
-  despesa: r => ({ id:r.id, desc:r.descricao, valor:r.valor, categoria:r.categoria, tipo:r.tipo, pessoa:r.pessoa, grupo:r.grupo, mes:r.mes }),
+  despesa: r => ({ id:r.id, desc:r.descricao, valor:r.valor, categoria:r.categoria, tipo:r.tipo, pessoa:r.pessoa, grupo:r.grupo, mes:r.mes, meses:r.meses||null }),
   cartao:  r => ({ id:r.id, nome:r.nome, limite:r.limite, cor:r.cor, melhorDia:r.melhor_dia, vencimento:r.vencimento }),
   compra:  r => ({ id:r.id, desc:r.descricao, valor:r.valor, cartaoId:r.cartao_id, categoria:r.categoria, tipo:r.tipo, parcelas:r.parcelas, mesInicio:r.mes_inicio, valorParcela:r.valor_parcela }),
   meta:    r => ({ id:r.id, nome:r.nome, emoji:r.emoji, valor:r.valor, atual:r.atual, data:r.data_limite }),
@@ -992,7 +1002,7 @@ const fromDB = {
 };
 
 const toDB = {
-  despesa: d => ({ id:d.id, descricao:d.desc, valor:d.valor, categoria:d.categoria, tipo:d.tipo, pessoa:d.pessoa, grupo:d.grupo, mes:d.mes }),
+  despesa: d => ({ id:d.id, descricao:d.desc, valor:d.valor, categoria:d.categoria, tipo:d.tipo, pessoa:d.pessoa, grupo:d.grupo, mes:d.mes, meses:d.meses||null }),
   cartao:  c => ({ id:c.id, nome:c.nome, limite:c.limite, cor:c.cor, melhor_dia:c.melhorDia, vencimento:c.vencimento }),
   compra:  c => ({ id:c.id, descricao:c.desc, valor:c.valor, cartao_id:c.cartaoId, categoria:c.categoria, tipo:c.tipo, parcelas:c.parcelas, mes_inicio:c.mesInicio, valor_parcela:c.valorParcela }),
   meta:    m => ({ id:m.id, nome:m.nome, emoji:m.emoji, valor:m.valor, atual:m.atual, data_limite:m.data }),
@@ -1110,8 +1120,15 @@ function getDespesasMes(mes) {
   const mesAlvo = mes || state.currentMonth;
   return state.despesas.filter(d => {
     if (d.tipo === 'recorrente') {
-      // Recorrente: aparece do mês de criação em diante
+      // Recorrente: aparece do mês de criação em diante, sem fim
       return d.mes <= mesAlvo;
+    } else if (d.tipo === 'temporaria') {
+      // Temporária: aparece por N meses a partir do mês de criação
+      if (!d.mes || d.mes > mesAlvo) return false;
+      const [sy, smo] = d.mes.split('-').map(Number);
+      const [ty, tmo] = mesAlvo.split('-').map(Number);
+      const diff = (ty * 12 + tmo) - (sy * 12 + smo); // 0 = mesmo mês
+      return diff >= 0 && diff < (d.meses || 1);
     } else {
       // Eventual: aparece SOMENTE no mês exato em que foi criada
       return d.mes === mesAlvo;
@@ -1152,10 +1169,12 @@ function openModalDespesa(id) {
   document.getElementById('despesaCategoria').value  = d?.categoria || 'Moradia';
   document.getElementById('despesaTipo').value       = d?.tipo || 'recorrente';
   document.getElementById('despesaGrupo').value      = d?.grupo || 'essencial';
+  document.getElementById('despesaMeses').value      = d?.meses || '';
   const sel = document.getElementById('despesaPessoa');
   sel.innerHTML = '<option value="Família">Família</option>';
   state.membros.forEach(m => sel.innerHTML += `<option value="${m.nome}">${m.nome}</option>`);
   if (d?.pessoa) sel.value = d.pessoa;
+  toggleDespesaMeses();
   openModal('modalDespesa');
 }
 
@@ -1279,7 +1298,25 @@ function atualizarInteligenteCompra() {
   infoEl.innerHTML = `${icon} ${mensagem}`;
 }
 
-function openModalMembro() { ['membroNome','membroSalario','membroExtras'].forEach(id=>{document.getElementById(id).value='';}); openModal('modalMembro'); }
+function toggleDespesaMeses() {
+  const tipo  = document.getElementById('despesaTipo').value;
+  const group = document.getElementById('despesaMesesGroup');
+  group.style.display = tipo === 'temporaria' ? 'block' : 'none';
+  if (tipo === 'temporaria') atualizarPreviewMeses();
+}
+
+function atualizarPreviewMeses() {
+  const meses = parseInt(document.getElementById('despesaMeses').value);
+  const preview = document.getElementById('despesaMesesPreview');
+  if (!meses || meses < 1) { preview.style.display='none'; return; }
+  const [y, mo] = state.currentMonth.split('-').map(Number);
+  const fimDate  = new Date(y, mo - 1 + meses - 1, 1); // último mês inclusive
+  const fimLabel = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][fimDate.getMonth()] + '/' + fimDate.getFullYear();
+  const nomesMes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const inicioLabel = nomesMes[mo-1] + '/' + y;
+  preview.style.display = 'block';
+  preview.innerHTML = `⏳ Aparece por <strong>${meses} ${meses===1?'mês':'meses'}</strong> — de <strong>${inicioLabel}</strong> até <strong>${fimLabel}</strong>, depois some automaticamente.`;
+}
 function openModalMeta()   { ['metaNome','metaEmoji','metaValor','metaAtual','metaData'].forEach(id=>{document.getElementById(id).value='';}); openModal('modalMeta'); }
 
 // ==========================================================
@@ -1289,11 +1326,13 @@ async function saveDespesa() {
   const desc  = document.getElementById('despesaDesc').value.trim();
   const valor = parseFloat(document.getElementById('despesaValor').value);
   if (!desc || isNaN(valor) || valor <= 0) { alert('Preencha todos os campos corretamente!'); return; }
+  const tipo  = document.getElementById('despesaTipo').value;
+  const meses = tipo === 'temporaria' ? (parseInt(document.getElementById('despesaMeses').value) || null) : null;
+  if (tipo === 'temporaria' && (!meses || meses < 1)) { alert('Informe a duração em meses!'); return; }
   const editId = document.getElementById('despesaEditId').value;
   const obj = {
-    id: editId || uid(), desc, valor,
+    id: editId || uid(), desc, valor, tipo, meses,
     categoria: document.getElementById('despesaCategoria').value,
-    tipo:      document.getElementById('despesaTipo').value,
     pessoa:    document.getElementById('despesaPessoa').value,
     grupo:     document.getElementById('despesaGrupo').value,
     mes:       state.currentMonth
@@ -1578,10 +1617,17 @@ function renderDespesas() {
   populateYearSelect('filterAno', filterAno);
 
   let desp = state.despesas.filter(d => {
-  if (filterAno && !d.mes?.startsWith(filterAno + '-')) return false;
-  if (d.tipo === 'recorrente') return d.mes <= state.currentMonth && d.mes?.startsWith(filterAno || d.mes.slice(0,4));
-  return d.mes === state.currentMonth;
-});
+    if (filterAno && !d.mes?.startsWith(filterAno + '-')) return false;
+    if (d.tipo === 'recorrente') return d.mes <= state.currentMonth;
+    if (d.tipo === 'temporaria') {
+      if (!d.mes || d.mes > state.currentMonth) return false;
+      const [sy, smo] = d.mes.split('-').map(Number);
+      const [cy, cmo] = state.currentMonth.split('-').map(Number);
+      const diff = (cy*12+cmo) - (sy*12+smo);
+      return diff >= 0 && diff < (d.meses || 1);
+    }
+    return d.mes === state.currentMonth;
+  });
   if (filterCat)    desp = desp.filter(d=>d.categoria===filterCat);
   if (filterTipo)   desp = desp.filter(d=>d.tipo===filterTipo);
   if (filterPessoa) desp = desp.filter(d=>d.pessoa===filterPessoa);
@@ -1590,15 +1636,31 @@ function renderDespesas() {
   if (desp.length===0) {
     set('tabelaDespesas','<tr><td colspan="7"><div class="empty-state"><div class="emoji">💸</div>Nenhuma despesa encontrada</div></td></tr>');
   } else {
-    set('tabelaDespesas', desp.map(d=>`<tr>
-      <td style="color:var(--text-primary);font-weight:500;">${d.desc}</td>
-      <td style="color:var(--text-muted);font-size:12px;">${getMonthLabel(d.mes||state.currentMonth)}</td>
-      <td><span class="tag cat-${catClass(d.categoria)}">${d.categoria}</span></td>
-      <td><span class="tag" style="background:${d.tipo==='recorrente'?'rgba(77,159,255,.15)':'rgba(168,85,247,.15)'};color:${d.tipo==='recorrente'?'var(--accent-blue)':'var(--accent-purple)'}">${d.tipo==='recorrente'?'🔄 Recorrente':'📌 Eventual'}</span></td>
-      <td>${d.pessoa||'—'}</td>
-      <td style="color:var(--accent-red);font-weight:700;">${formatBRL(d.valor)}</td>
-      <td><button class="edit-btn" onclick="openModalDespesa('${d.id}')">✏️</button><button class="del-btn" onclick="deleteDespesa('${d.id}')">🗑️</button></td>
-    </tr>`).join(''));
+    set('tabelaDespesas', desp.map(d=>{
+      let tipoBadge;
+      if (d.tipo === 'recorrente') {
+        tipoBadge = `<span class="tag" style="background:rgba(77,159,255,.15);color:var(--accent-blue)">🔄 Recorrente</span>`;
+      } else if (d.tipo === 'temporaria') {
+        // Calcular parcelas restantes
+        const [sy, smo] = (d.mes||state.currentMonth).split('-').map(Number);
+        const [cy, cmo] = state.currentMonth.split('-').map(Number);
+        const atual = (cy*12+cmo) - (sy*12+smo) + 1; // parcela atual (1-based)
+        const total = d.meses || 1;
+        const resta = total - atual + 1;
+        tipoBadge = `<span class="tag" style="background:rgba(168,85,247,.15);color:var(--accent-purple);">⏳ ${atual}/${total}</span>`;
+      } else {
+        tipoBadge = `<span class="tag" style="background:rgba(168,85,247,.15);color:var(--accent-purple)">📌 Eventual</span>`;
+      }
+      return `<tr>
+        <td style="color:var(--text-primary);font-weight:500;">${d.desc}</td>
+        <td style="color:var(--text-muted);font-size:12px;">${getMonthLabel(d.mes||state.currentMonth)}</td>
+        <td><span class="tag cat-${catClass(d.categoria)}">${d.categoria}</span></td>
+        <td>${tipoBadge}</td>
+        <td>${d.pessoa||'—'}</td>
+        <td style="color:var(--accent-red);font-weight:700;">${formatBRL(d.valor)}</td>
+        <td><button class="edit-btn" onclick="openModalDespesa('${d.id}')">✏️</button><button class="del-btn" onclick="deleteDespesa('${d.id}')">🗑️</button></td>
+      </tr>`;
+    }).join(''));
   }
   const tot = desp.reduce((s,d)=>s+d.valor,0);
   set('despesasCount', `${desp.length} despesa${desp.length!==1?'s':''}${filterAno?' em '+filterAno:''}`);
