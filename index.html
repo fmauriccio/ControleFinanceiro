@@ -761,9 +761,10 @@
 <div class="modal-overlay" id="modalCartao">
   <div class="modal">
     <div class="modal-title">
-      💳 Novo Cartão de Crédito
+      <span id="modalCartaoTitle">💳 Novo Cartão de Crédito</span>
       <button class="modal-close" onclick="closeModal('modalCartao')">✕</button>
     </div>
+    <input type="hidden" id="cartaoEditId">
     <div class="form-group">
       <label class="form-label">Nome do Cartão</label>
       <input type="text" class="form-input" id="cartaoNome" placeholder="Ex: Nubank, Itaú...">
@@ -1159,9 +1160,10 @@ function openModalDespesa(id) {
 }
 
 function openModalCartao() {
-  ['cartaoNome','cartaoLimite','cartaoMelhorDia','cartaoVencimento'].forEach(id => { document.getElementById(id).value=''; });
+  ['cartaoNome','cartaoLimite','cartaoMelhorDia','cartaoVencimento','cartaoEditId'].forEach(id => { document.getElementById(id).value=''; });
   document.getElementById('cartaoDiasAntes').value = '7';
   document.getElementById('cartaoPreviewDias').style.display = 'none';
+  document.getElementById('modalCartaoTitle').textContent = '💳 Novo Cartão de Crédito';
   openModal('modalCartao');
 }
 
@@ -1172,22 +1174,23 @@ function calcularDiasCartao() {
   const preview = document.getElementById('cartaoPreviewDias');
   if (!venc || venc < 1 || venc > 28) { preview.style.display = 'none'; return; }
 
-  // fechamento = vencimento - diasAntes (wrap around se necessário)
+  // fechamento = vencimento - diasAntes
   let fechamento = venc - diasAntes;
-  if (fechamento <= 0) fechamento += 28; // aprox, meses variam
+  if (fechamento <= 0) fechamento += 28;
 
-  // melhor dia = dia anterior ao fechamento
-  let melhorDia = fechamento - 1;
-  if (melhorDia <= 0) melhorDia = 28;
+  // melhor dia = dia SEGUINTE ao fechamento
+  // (compra feita após o fechamento entra na PRÓXIMA fatura, maximizando o prazo)
+  const melhorDia = fechamento >= 28 ? 1 : fechamento + 1;
 
   document.getElementById('cartaoMelhorDia').value = melhorDia;
   document.getElementById('prevMelhorDia').textContent = melhorDia;
   document.getElementById('prevFechamento').textContent = fechamento;
   document.getElementById('prevVencimento').textContent = venc;
 
-  const diasAproveitados = venc - fechamento;
+  // Prazo real: do melhor dia de compra até o vencimento (~30 dias depois)
+  const prazoAprox = diasAntes + 30;
   document.getElementById('prevExplicacao').innerHTML =
-    `💡 Comprando até o dia <strong>${melhorDia}</strong>, sua compra entra na fatura que fecha no dia <strong>${fechamento}</strong> e vence no dia <strong>${venc}</strong> — você tem até <strong>${diasAproveitados + 30} dias</strong> aproximados de prazo. Compras do dia <strong>${fechamento}</strong> em diante vão para a fatura seguinte.`;
+    `💡 A fatura <strong>fecha no dia ${fechamento}</strong>. Comprando a partir do dia <strong>${melhorDia}</strong>, sua compra entra na fatura <em>seguinte</em>, que vence dia <strong>${venc}</strong> — você ganha até <strong>~${prazoAprox} dias</strong> de prazo. Compras feitas até o dia <strong>${fechamento}</strong> entram na fatura atual.`;
 
   preview.style.display = 'block';
 }
@@ -1222,19 +1225,20 @@ function atualizarInteligenteCompra() {
   const ano  = data.getFullYear();
   const mes  = data.getMonth(); // 0-indexed
 
-  const fechamento  = cartao.vencimento - (cartao.diasAntes || 7);
-  const diaFechamento = fechamento <= 0 ? fechamento + 28 : fechamento;
-  const melhor = cartao.melhorDia;
+  const diasAntes = cartao.diasAntes || 7;
+  let fechamento  = cartao.vencimento - diasAntes;
+  if (fechamento <= 0) fechamento += 28;
+  // melhorDia = dia seguinte ao fechamento
+  const melhor = fechamento >= 28 ? 1 : fechamento + 1;
 
-  // Se a compra é ANTES ou no melhor dia → vai pra fatura do mês atual
-  // Se a compra é APÓS o melhor dia (ou seja, após o fechamento) → vai para o próximo mês
-  let faturaAno, faturasMes;
-  const dentroDoMes = dia <= diaFechamento; // antes do fechamento → fatura desse mês
-  if (dentroDoMes) {
+  // Compra feita APÓS o fechamento → vai para a próxima fatura
+  // Compra feita ATÉ o fechamento → fatura atual
+  const aposFechar = dia > fechamento;
+  let faturasMes, faturaAno;
+  if (!aposFechar) {
     faturasMes = mes;
     faturaAno  = ano;
   } else {
-    // Após fechamento → próxima fatura
     faturasMes = mes + 1;
     faturaAno  = ano;
     if (faturasMes > 11) { faturasMes = 0; faturaAno++; }
@@ -1250,25 +1254,25 @@ function atualizarInteligenteCompra() {
   const nomesMes = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
   const mesNome  = nomesMes[faturasMes];
 
-  // Verifica se está num "período perigoso" (próximo do fechamento)
-  const diasParaFechamento = diaFechamento - dia;
+  // Verifica se está num "período perigoso" (próximo do fechamento, ainda dentro)
+  const diasParaFechamento = fechamento - dia;
 
   let bgColor, borderColor, icon, mensagem;
-  if (dentroDoMes && diasParaFechamento >= 0 && diasParaFechamento <= 2) {
+  if (!aposFechar && diasParaFechamento >= 0 && diasParaFechamento <= 2) {
     // Próximo do fechamento - atenção
     bgColor = 'rgba(245,158,11,.1)'; borderColor = 'rgba(245,158,11,.35)';
     icon = '⚠️';
-    mensagem = `<strong>Atenção!</strong> A fatura fecha em <strong>${diasParaFechamento === 0 ? 'hoje' : diasParaFechamento + ' dia(s)'}</strong> (dia ${diaFechamento}). Essa compra ainda entra na fatura de <strong>${mesNome}</strong>, que vence dia <strong>${cartao.vencimento}</strong> — em ${diffDias} dias.`;
-  } else if (dentroDoMes) {
+    mensagem = `<strong>Atenção!</strong> A fatura fecha em <strong>${diasParaFechamento === 0 ? 'hoje' : diasParaFechamento + ' dia(s)'}</strong> (dia ${fechamento}). Essa compra ainda entra na fatura de <strong>${mesNome}</strong>, que vence dia <strong>${cartao.vencimento}</strong> — em ${diffDias} dias.`;
+  } else if (!aposFechar) {
     // Período seguro, dentro da fatura atual
     bgColor = 'rgba(0,229,160,.08)'; borderColor = 'rgba(0,229,160,.3)';
     icon = '✅';
     mensagem = `Período seguro! Essa compra entra na fatura de <strong>${mesNome}/${faturaAno}</strong>, que vence dia <strong>${cartao.vencimento}</strong> — daqui a <strong>${diffDias} dias</strong>.`;
   } else {
-    // Após o fechamento — vai para próxima fatura
+    // Após o fechamento — vai para próxima fatura (ótimo prazo!)
     bgColor = 'rgba(77,159,255,.1)'; borderColor = 'rgba(77,159,255,.3)';
     icon = '📅';
-    mensagem = `A fatura do mês atual já fechou (dia ${diaFechamento}). Essa compra vai para a fatura de <strong>${mesNome}/${faturaAno}</strong>, que vence dia <strong>${cartao.vencimento}</strong> — daqui a <strong>${diffDias} dias</strong>.`;
+    mensagem = `A fatura atual fechou (dia ${fechamento}). Essa compra vai para a fatura de <strong>${mesNome}/${faturaAno}</strong>, que vence dia <strong>${cartao.vencimento}</strong> — daqui a <strong>${diffDias} dias</strong> de prazo!`;
   }
 
   infoEl.style.cssText = `display:block; background:${bgColor}; border:1px solid ${borderColor}; border-radius:10px; padding:12px 14px; margin-top:-6px; margin-bottom:4px; font-size:12px; line-height:1.6; color:var(--text-secondary);`;
@@ -1317,17 +1321,41 @@ async function saveCartao() {
   const diasAntes = parseInt(document.getElementById('cartaoDiasAntes').value) || 7;
   let fechamento = venc - diasAntes;
   if (fechamento <= 0) fechamento += 28;
-  const melhorDia = fechamento <= 1 ? 28 : fechamento - 1;
+  // melhorDia = dia SEGUINTE ao fechamento (máximo prazo)
+  const melhorDia = fechamento >= 28 ? 1 : fechamento + 1;
+
+  const editId = document.getElementById('cartaoEditId').value;
   const obj = {
-    id: uid(), nome, limite,
+    id: editId || uid(), nome, limite,
     cor:        document.getElementById('cartaoCor').value,
     melhorDia,
     vencimento: venc,
     diasAntes
   };
   showLoading(true);
-  try { await sb.from('cartoes').insert(toDB.cartao(obj)); await loadState(); closeModal('modalCartao'); renderAll(); }
+  try {
+    if (editId) {
+      await sb.from('cartoes').update(toDB.cartao(obj)).eq('id', editId);
+    } else {
+      await sb.from('cartoes').insert(toDB.cartao(obj));
+    }
+    await loadState(); closeModal('modalCartao'); renderAll();
+  }
   catch(e) { console.error(e); alert('Erro ao salvar cartão.'); showLoading(false); }
+}
+
+function editCartao(id) {
+  const c = state.cartoes.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('cartaoEditId').value      = c.id;
+  document.getElementById('cartaoNome').value        = c.nome;
+  document.getElementById('cartaoLimite').value      = c.limite;
+  document.getElementById('cartaoCor').value         = c.cor || 'purple';
+  document.getElementById('cartaoVencimento').value  = c.vencimento;
+  document.getElementById('cartaoDiasAntes').value   = c.diasAntes || 7;
+  document.getElementById('modalCartaoTitle').textContent = '✏️ Editar Cartão';
+  calcularDiasCartao();
+  openModal('modalCartao');
 }
 
 async function deleteCartao(id) {
@@ -1583,34 +1611,66 @@ function renderDespesas() {
 const CARD_GRADS = { purple:'linear-gradient(135deg,#7c3aed,#a855f7)', blue:'linear-gradient(135deg,#1d4ed8,#4d9fff)', green:'linear-gradient(135deg,#047857,#00e5a0)', orange:'linear-gradient(135deg,#c2410c,#ff7849)', red:'linear-gradient(135deg,#be123c,#ff4d6d)', dark:'linear-gradient(135deg,#1e293b,#334155)' };
 const CARD_DOTS  = { purple:'#a855f7', blue:'#4d9fff', green:'#00e5a0', orange:'#ff7849', red:'#ff4d6d', dark:'#334155' };
 
+// Calcula o comprometimento real do cartão: soma de todas as parcelas futuras em aberto
+function getLimiteComprometido(cartaoId) {
+  const hoje = new Date();
+  const mesAtual = hoje.toISOString().slice(0,7);
+  // Soma todas as parcelas restantes de todas as compras deste cartão
+  return state.compras
+    .filter(c => c.cartaoId === cartaoId)
+    .reduce((total, c) => {
+      const [sy, smo] = c.mesInicio.split('-').map(Number);
+      const [ay, amo] = mesAtual.split('-').map(Number);
+      const parcelasPagas = Math.max(0, (ay*12+amo) - (sy*12+smo)); // parcelas já passadas
+      const parcelasRestantes = Math.max(0, c.parcelas - parcelasPagas);
+      return total + (parcelasRestantes * c.valorParcela);
+    }, 0);
+}
+
+// Lógica correta do ciclo:
+// fechamento = data em que a fatura fecha
+// melhor dia = dia SEGUINTE ao fechamento (compra entra na próxima fatura, prazo máximo)
+// vencimento = quando paga
+function calcularCicloCartao(c) {
+  const diasAntes = c.diasAntes || 7;
+  let fechamento  = c.vencimento - diasAntes;
+  if (fechamento <= 0) fechamento += 28;
+  // melhor dia = dia seguinte ao fechamento (entra na fatura do próximo ciclo, máximo de prazo)
+  const melhorDia = fechamento >= 28 ? 1 : fechamento + 1;
+  return { fechamento, melhorDia };
+}
+
 function renderCartoes() {
   const grid = document.getElementById('creditCardsGrid');
   if (state.cartoes.length===0) { grid.innerHTML='<div class="empty-state card"><div class="emoji">💳</div>Nenhum cartão cadastrado</div>'; }
   else {
-    const hoje = new Date();
+    const hoje    = new Date();
     const diaHoje = hoje.getDate();
     grid.innerHTML = state.cartoes.map(c => {
-      const gasto = getComprasParaMes().filter(co=>co.cartaoId===c.id).reduce((s,co)=>s+co.valorParcela,0);
-      const usoP  = Math.min(100,Math.round(gasto/c.limite*100));
-      const grad  = CARD_GRADS[c.cor]||CARD_GRADS.purple;
+      const gastoMes = getComprasParaMes().filter(co=>co.cartaoId===c.id).reduce((s,co)=>s+co.valorParcela,0);
+      const comprometido = getLimiteComprometido(c.id);
+      const dispReal = Math.max(0, c.limite - comprometido);
+      const usoP     = Math.min(100, Math.round(comprometido / c.limite * 100));
+      const grad      = CARD_GRADS[c.cor]||CARD_GRADS.purple;
 
-      // Calcular status inteligente do ciclo
-      const diasAntes   = c.diasAntes || 7;
-      let fechamento    = c.vencimento - diasAntes;
-      if (fechamento <= 0) fechamento += 28;
-      const melhor      = c.melhorDia || (fechamento <= 1 ? 28 : fechamento - 1);
+      const { fechamento, melhorDia } = calcularCicloCartao(c);
       const diasParaFech = fechamento - diaHoje;
-      const diasParaVenc = c.vencimento - diaHoje;
+      const diasParaVenc = c.vencimento >= diaHoje ? c.vencimento - diaHoje : (c.vencimento + 30) - diaHoje;
+
+      // Status: após fechamento e antes do vencimento = período de cobrança
+      const faturaAberta = diaHoje > fechamento && diaHoje <= c.vencimento;
+      const proximoFech  = diasParaFech >= 0 && diasParaFech <= 3;
 
       let statusBadge = '';
-      let statusInfo  = `Fecha dia ${fechamento} · Vence dia ${c.vencimento}`;
-      if (diasParaFech >= 0 && diasParaFech <= 3) {
+      if (proximoFech) {
         statusBadge = `<span style="background:rgba(245,158,11,.25);color:#f59e0b;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;">⚠️ Fecha em ${diasParaFech}d</span>`;
-      } else if (diaHoje > fechamento && diaHoje <= c.vencimento) {
+      } else if (faturaAberta) {
         statusBadge = `<span style="background:rgba(255,77,109,.25);color:var(--accent-red);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;">🔴 Vence em ${diasParaVenc}d</span>`;
-      } else if (diaHoje <= melhor) {
+      } else {
         statusBadge = `<span style="background:rgba(0,229,160,.2);color:var(--accent-green);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;">✅ Bom período</span>`;
       }
+
+      const barColor = usoP > 80 ? 'var(--accent-red)' : usoP > 60 ? 'var(--accent-yellow)' : 'var(--accent-green)';
 
       return `<div>
         <div class="credit-card-visual" style="background:${grad};">
@@ -1620,25 +1680,32 @@ function renderCartoes() {
           </div>
           <div>
             <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;">${c.nome}</div>
-            <div style="font-size:11px;opacity:.7;margin-top:2px;">Melhor: dia ${melhor} · Fecha: dia ${fechamento} · Vence: dia ${c.vencimento}</div>
+            <div style="font-size:11px;opacity:.7;margin-top:2px;">Melhor: dia ${melhorDia} · Fecha: dia ${fechamento} · Vence: dia ${c.vencimento}</div>
           </div>
         </div>
         <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:0 0 16px 16px;padding:16px;margin-top:-8px;position:relative;z-index:1;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
             <span style="font-size:12px;color:var(--text-muted);">Status hoje</span>
             ${statusBadge}
           </div>
-          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;">
-            <span style="color:var(--text-muted);">Gasto este mês</span>
-            <span style="font-weight:700;color:var(--accent-red);">${formatBRL(gasto)}</span>
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+            <span style="color:var(--text-muted);">Fatura deste mês</span>
+            <span style="font-weight:700;color:var(--accent-red);">${formatBRL(gastoMes)}</span>
           </div>
-          <div class="progress-bar"><div class="progress-fill" style="background:${usoP>80?'var(--accent-red)':usoP>60?'var(--accent-yellow)':'var(--accent-green)'};width:${usoP}%"></div></div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:8px;">
+            <span style="color:var(--text-muted);">Total comprometido</span>
+            <span style="font-weight:700;color:var(--accent-orange,#ff7849);">${formatBRL(comprometido)}</span>
+          </div>
+          <div class="progress-bar" title="${usoP}% do limite comprometido">
+            <div class="progress-fill" style="background:${barColor};width:${usoP}%"></div>
+          </div>
           <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:6px;color:var(--text-muted);">
             <span>Limite: ${formatBRL(c.limite)}</span>
-            <span>Disponível: ${formatBRL(c.limite-gasto)}</span>
+            <span style="color:${dispReal < c.limite*0.2 ? 'var(--accent-red)' : 'var(--text-muted)'};">Disponível real: ${formatBRL(dispReal)}</span>
           </div>
-          <div style="margin-top:12px;display:flex;justify-content:flex-end;">
-            <button class="btn btn-danger btn-sm" onclick="deleteCartao('${c.id}')">Excluir Cartão</button>
+          <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
+            <button class="btn btn-secondary btn-sm" onclick="editCartao('${c.id}')">✏️ Editar</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteCartao('${c.id}')">Excluir</button>
           </div>
         </div>
       </div>`;
