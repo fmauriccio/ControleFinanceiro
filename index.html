@@ -1524,8 +1524,12 @@ function renderDashboard() {
   const saldo      = renda - totalGastos;
   const now        = new Date();
   const daysInMes  = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
-  const gpdDia     = now.getDate() > 0 ? totalGastos/now.getDate() : 0;
-  const previsao   = renda - totalGastos;
+  // Previsão de fechamento:
+  // Renda - tudo que já está comprometido no mês (despesas fixas + cartão)
+  // É o número real — não tenta projetar gastos variáveis futuros
+  const previsao = renda - totalGastos;
+  const previsaoEl = document.getElementById('summaryPrevisao');
+  if (previsaoEl) previsaoEl.style.color = previsao >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
 
   set('summaryRenda',    formatBRL(renda));
   set('summaryGastos',   formatBRL(totalGastos));
