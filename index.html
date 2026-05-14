@@ -1525,7 +1525,7 @@ function renderDashboard() {
   const now        = new Date();
   const daysInMes  = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
   const gpdDia     = now.getDate() > 0 ? totalGastos/now.getDate() : 0;
-  const previsao   = renda - (gpdDia * daysInMes);
+  const previsao   = renda - totalGastos;
 
   set('summaryRenda',    formatBRL(renda));
   set('summaryGastos',   formatBRL(totalGastos));
