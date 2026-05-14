@@ -899,9 +899,10 @@
 <div class="modal-overlay" id="modalMembro">
   <div class="modal">
     <div class="modal-title">
-      Adicionar Membro da Família
+      <span id="modalMembroTitle">Adicionar Membro da Família</span>
       <button class="modal-close" onclick="closeModal('modalMembro')">✕</button>
     </div>
+    <input type="hidden" id="membroEditId">
     <div class="form-group">
       <label class="form-label">Nome</label>
       <input type="text" class="form-input" id="membroNome" placeholder="Ex: João, Maria...">
@@ -1100,10 +1101,14 @@ function catClass(cat) {
 }
 
 function getAllYears() {
-  const s = new Set([new Date().getFullYear(), new Date().getFullYear()-1]);
+  const curYear = new Date().getFullYear();
+  // Sempre exibe de 2 anos atrás até 4 anos à frente
+  const s = new Set();
+  for (let y = curYear - 2; y <= curYear + 4; y++) s.add(y);
+  // Adiciona também os anos de dados existentes (histórico real)
   state.despesas.forEach(d => { if(d.mes) s.add(parseInt(d.mes.split('-')[0])); });
   state.compras.forEach(c => { if(c.mesInicio) s.add(parseInt(c.mesInicio.split('-')[0])); });
-  return [...s].sort((a,b)=>b-a);
+  return [...s].sort((a,b) => b-a);
 }
 
 function populateYearSelect(id, selected) {
@@ -1443,13 +1448,38 @@ async function deleteCompra(id) {
   await loadState(); renderAll();
 }
 
+// Abre modal para adicionar OU editar membro
+function openModalMembro(id) {
+  const m = id ? state.membros.find(x => x.id === id) : null;
+  document.getElementById('modalMembroTitle').textContent = id ? '✏️ Editar Membro' : 'Adicionar Membro da Família';
+  document.getElementById('membroEditId').value  = id || '';
+  document.getElementById('membroNome').value    = m?.nome    || '';
+  document.getElementById('membroEmoji').value   = m?.emoji   || '👨';
+  document.getElementById('membroSalario').value = m?.salario != null ? m.salario : '';
+  document.getElementById('membroExtras').value  = m?.extras  != null ? m.extras  : '';
+  openModal('modalMembro');
+}
+
 async function saveMembro() {
   const nome = document.getElementById('membroNome').value.trim();
   if (!nome) { alert('Informe o nome!'); return; }
-  const obj = { id:uid(), nome, emoji:document.getElementById('membroEmoji').value, salario:parseFloat(document.getElementById('membroSalario').value)||0, extras:parseFloat(document.getElementById('membroExtras').value)||0 };
+  const editId = document.getElementById('membroEditId').value;
+  const obj = {
+    id:      editId || uid(),
+    nome,
+    emoji:   document.getElementById('membroEmoji').value,
+    salario: parseFloat(document.getElementById('membroSalario').value) || 0,
+    extras:  parseFloat(document.getElementById('membroExtras').value)  || 0
+  };
   showLoading(true);
-  try { await sb.from('membros').insert(toDB.membro(obj)); await loadState(); closeModal('modalMembro'); renderAll(); }
-  catch(e) { console.error(e); alert('Erro ao salvar membro.'); showLoading(false); }
+  try {
+    if (editId) {
+      await sb.from('membros').update(toDB.membro(obj)).eq('id', editId);
+    } else {
+      await sb.from('membros').insert(toDB.membro(obj));
+    }
+    await loadState(); closeModal('modalMembro'); renderAll();
+  } catch(e) { console.error(e); alert('Erro ao salvar membro.'); showLoading(false); }
 }
 
 async function deleteMembro(id) {
@@ -1896,7 +1926,8 @@ function renderRenda() {
           <div class="progress-bar"><div class="progress-fill" style="background:var(--accent-green);width:${pct}%"></div></div>
           <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${pct}% da renda familiar</div>
         </div>
-        <div style="margin-top:16px;">
+        <div style="margin-top:16px;display:flex;gap:8px;justify-content:center;">
+          <button class="btn btn-secondary btn-sm" onclick="openModalMembro('${m.id}')">✏️ Editar</button>
           <button class="btn btn-danger btn-sm" onclick="deleteMembro('${m.id}')">Remover</button>
         </div>
       </div>`;
