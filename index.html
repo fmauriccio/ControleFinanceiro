@@ -1656,11 +1656,13 @@ function renderDespesas() {
 
   let desp = state.despesas.filter(d => {
    if (filterAno) {
-  if (d.tipo === 'temporaria' && d.mes) {
+  const ano = parseInt(filterAno);
+  if (d.tipo === 'recorrente') {
+    if (!d.mes || parseInt(d.mes.split('-')[0]) > ano) return false;
+  } else if (d.tipo === 'temporaria' && d.mes) {
     const [sy, smo] = d.mes.split('-').map(Number);
-    const fimDate   = new Date(sy, smo - 1 + (d.meses || 1) - 1, 1);
-    const fimAno    = fimDate.getFullYear();
-    if (sy > parseInt(filterAno) || fimAno < parseInt(filterAno)) return false;
+    const fimAno = new Date(sy, smo - 1 + (d.meses || 1) - 1, 1).getFullYear();
+    if (sy > ano || fimAno < ano) return false;
   } else {
     if (!d.mes?.startsWith(filterAno + '-')) return false;
   }
