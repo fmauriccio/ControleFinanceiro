@@ -1655,7 +1655,16 @@ function renderDespesas() {
   populateYearSelect('filterAno', filterAno);
 
   let desp = state.despesas.filter(d => {
-    if (filterAno && !d.mes?.startsWith(filterAno + '-')) return false;
+   if (filterAno) {
+  if (d.tipo === 'temporaria' && d.mes) {
+    const [sy, smo] = d.mes.split('-').map(Number);
+    const fimDate   = new Date(sy, smo - 1 + (d.meses || 1) - 1, 1);
+    const fimAno    = fimDate.getFullYear();
+    if (sy > parseInt(filterAno) || fimAno < parseInt(filterAno)) return false;
+  } else {
+    if (!d.mes?.startsWith(filterAno + '-')) return false;
+  }
+}
     if (d.tipo === 'recorrente') return d.mes <= state.currentMonth;
     if (d.tipo === 'temporaria') {
       if (!d.mes || d.mes > state.currentMonth) return false;
